@@ -76,7 +76,7 @@ def generation_desired_path():
     '''
     Create desired path
     '''
-    global trajectory_type
+    # global trajectory_type
     rospy.loginfo("generation_desired_path()")
     
     desired_path = Path()
@@ -220,7 +220,7 @@ def generation_desired_path():
 
  
 def calculate_error(path_x, path_y, path_theta, robot_x, robot_y, robot_theta):
-    global error_x, sum_error
+    # global error_x, sum_error
     error_x = abs(path_x - robot_x)
     sum_error = error_x + sum_error
 
@@ -232,7 +232,7 @@ def calculate_error(path_x, path_y, path_theta, robot_x, robot_y, robot_theta):
     print("robot_theta: ", robot_theta)
 
 def find_line_position(path_number, y):
-    global current_path_x, current_path_y, current_path_theta, sum_error
+    # global current_path_x, current_path_y, current_path_theta, sum_error
     current_path_y = y
 
     if len(path_arr_yy) == path_number + 1:
@@ -259,7 +259,7 @@ def find_line_position(path_number, y):
 if __name__ == '__main__':
     rospy.init_node('path_node')
     rospy.loginfo("path_node is started!!")
-    global trajectory_type
+    # global trajectory_type
     trajectory_type =  rospy.get_param('~trajectory_type')
     odom_sub = rospy.Subscriber('/odom', Odometry, odom_cb)
 

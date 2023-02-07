@@ -38,6 +38,11 @@ class FG_eval
         double  _w_cte, _w_etheta, _w_vel, _w_angvel, _w_accel, _w_angvel_d, _w_accel_d;
         int _mpc_steps, _x_start, _y_start, _theta_start, _v_start, _cte_start, _etheta_start, _angvel_start, _a_start;
 
+        int _angacel_start, _fx_1_start, _fx_2_start;
+        double _w_fx1, _w_fx2, _w_fx1_d, _w_fx2_d;
+
+        double massa, I_chassi_z, _fmax;
+
         AD<double> cost_cte, cost_etheta, cost_vel;
         // Constructor
         FG_eval(Eigen::VectorXd coeffs) 
@@ -56,16 +61,28 @@ class FG_eval
             _w_accel   = 50;
             _w_angvel_d = 0;
             _w_accel_d = 0;
+            _w_fx1 = 50;
+            _w_fx2 = 50;
+            _w_fx1_d = 5;
+            _w_fx2_d = 5;
 
-            _mpc_steps   = 40;
-            _x_start     = 0;
-            _y_start     = _x_start + _mpc_steps;
-            _theta_start   = _y_start + _mpc_steps;
-            _v_start     = _theta_start + _mpc_steps;
-            _cte_start   = _v_start + _mpc_steps;
-            _etheta_start  = _cte_start + _mpc_steps;
-            _angvel_start = _etheta_start + _mpc_steps;
-            _a_start     = _angvel_start + _mpc_steps - 1;
+            _mpc_steps      = 40;
+            _x_start        = 0;
+            _y_start        = _x_start + _mpc_steps;
+            _theta_start    = _y_start + _mpc_steps;
+            _v_start        = _theta_start + _mpc_steps;
+            _cte_start      = _v_start + _mpc_steps;
+            _etheta_start   = _cte_start + _mpc_steps;
+            _angvel_start   = _etheta_start + _mpc_steps;
+            _a_start        = _angvel_start + _mpc_steps;
+            _angacel_start  = _a_start + _mpc_steps;
+            _fx_1_start     = _angacel_start + _mpc_steps;
+            _fx_2_start     = _fx_1_start + _mpc_steps - 1;
+
+            _fmax = 0.4601128983093268;
+            massa = 0.08199788;
+            I_chassi_z = 1.4612727e-02;
+
         }
 
         // Load parameters for constraints
@@ -85,17 +102,22 @@ class FG_eval
             _w_angvel_d = params.find("W_DANGVEL") != params.end() ? params.at("W_DANGVEL") : _w_angvel_d;
             _w_accel_d = params.find("W_DA") != params.end()     ? params.at("W_DA") : _w_accel_d;
 
-            _x_start     = 0;
-            _y_start     = _x_start + _mpc_steps;
-            _theta_start   = _y_start + _mpc_steps;
-            _v_start     = _theta_start + _mpc_steps;
-            _cte_start   = _v_start + _mpc_steps;
-            _etheta_start  = _cte_start + _mpc_steps;
-            _angvel_start = _etheta_start + _mpc_steps;
-            _a_start     = _angvel_start + _mpc_steps - 1;
+            _x_start        = 0;
+            _y_start        = _x_start + _mpc_steps;
+            _theta_start    = _y_start + _mpc_steps;
+            _v_start        = _theta_start + _mpc_steps;
+            _cte_start      = _v_start + _mpc_steps;
+            _etheta_start   = _cte_start + _mpc_steps;
+            _angvel_start   = _etheta_start + _mpc_steps;
+            _a_start        = _angvel_start + _mpc_steps;
+            _angacel_start  = _a_start + _mpc_steps;
+            _fx_1_start     = _angacel_start + _mpc_steps;
+            _fx_2_start     = _fx_1_start + _mpc_steps - 1;
             
             //cout << "\n!! FG_eval Obj parameters updated !! " << _mpc_steps << endl; 
         }
+
+        
 
         // MPC implementation (cost func & constraints)
         typedef CPPAD_TESTVECTOR(AD<double>) ADvector; 
@@ -133,18 +155,22 @@ class FG_eval
             cout << "-----------------------------------------------" <<endl;
             cout << "cost_cte, etheta, velocity: " << cost_cte << ", " << cost_etheta  << ", " << cost_vel << endl;
             
-
+            
             // Minimize the use of actuators.
             for (int i = 0; i < _mpc_steps - 1; i++) {
-              fg[0] += _w_angvel * CppAD::pow(vars[_angvel_start + i], 2);
-              fg[0] += _w_accel * CppAD::pow(vars[_a_start + i], 2);
+            //   fg[0] += _w_angvel * CppAD::pow(vars[_angvel_start + i], 2);
+            //   fg[0] += _w_accel * CppAD::pow(vars[_a_start + i], 2);
+                fg[0] += _w_fx1 * CppAD::pow(vars[_fx_1_start + i], 2);
+                fg[0] += _w_fx2 * CppAD::pow(vars[_fx_2_start + i], 2);
             }
             cout << "cost of actuators: " << fg[0] << endl; 
 
             // Minimize the value gap between sequential actuations.
             for (int i = 0; i < _mpc_steps - 2; i++) {
-              fg[0] += _w_angvel_d * CppAD::pow(vars[_angvel_start + i + 1] - vars[_angvel_start + i], 2);
-              fg[0] += _w_accel_d * CppAD::pow(vars[_a_start + i + 1] - vars[_a_start + i], 2);
+            //   fg[0] += _w_angvel_d * CppAD::pow(vars[_angvel_start + i + 1] - vars[_angvel_start + i], 2);
+            //   fg[0] += _w_accel_d * CppAD::pow(vars[_a_start + i + 1] - vars[_a_start + i], 2);
+                fg[0] += _w_fx1_d * CppAD::pow(vars[_fx_1_start + i + 1] - vars[_fx_1_start + i], 2);
+                fg[0] += _w_fx2_d * CppAD::pow(vars[_fx_2_start + i + 1] - vars[_fx_2_start + i], 2);
             }
             cout << "cost of gap: " << fg[0] << endl; 
             
@@ -157,6 +183,10 @@ class FG_eval
             fg[1 + _v_start] = vars[_v_start];
             fg[1 + _cte_start] = vars[_cte_start];
             fg[1 + _etheta_start] = vars[_etheta_start];
+            fg[1 + _angvel_start] = vars[_angvel_start];
+            fg[1 + _a_start] = vars[_a_start];
+            fg[1 + _angacel_start] = vars[_angacel_start];
+
 
             // Add system dynamic model constraint
             for (int i = 0; i < _mpc_steps - 1; i++)
@@ -168,6 +198,9 @@ class FG_eval
                 AD<double> v1 = vars[_v_start + i + 1];
                 AD<double> cte1 = vars[_cte_start + i + 1];
                 AD<double> etheta1 = vars[_etheta_start + i + 1];
+                AD<double> angvel1 = vars[_angvel_start + i + 1];
+                AD<double> a1 = vars[_a_start + i + 1];
+                AD<double> angacel1 = vars[_angacel_start + i + 1];
 
                 // The state at time t.
                 AD<double> x0 = vars[_x_start + i];
@@ -176,11 +209,14 @@ class FG_eval
                 AD<double> v0 = vars[_v_start + i];
                 AD<double> cte0 = vars[_cte_start + i];
                 AD<double> etheta0 = vars[_etheta_start + i];
+                AD<double> angvel0 = vars[_angvel_start + i + 1];
+                AD<double> a0 = vars[_a_start + i + 1];
+                AD<double> angacel0 = vars[_angacel_start + i + 1];
 
                 // Only consider the actuation at time t.
                 //AD<double> angvel0 = vars[_angvel_start + i];
-                AD<double> w0 = vars[_angvel_start + i];
-                AD<double> a0 = vars[_a_start + i];
+                AD<double> fx1_0 = vars[_fx_1_start + i];
+                AD<double> fx2_0 = vars[_fx_2_start + i];
 
 
                 //AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * CppAD::pow(x0, 2) + coeffs[3] * CppAD::pow(x0, 3);
@@ -206,14 +242,22 @@ class FG_eval
                 // This is also CppAD can compute derivatives and pass
                 // these to the solver.
                 // TODO: Setup the rest of the model constraints
-                fg[2 + _x_start + i] = x1 - (x0 + v0 * CppAD::cos(theta0) * _dt);
-                fg[2 + _y_start + i] = y1 - (y0 + v0 * CppAD::sin(theta0) * _dt);
-                fg[2 + _theta_start + i] = theta1 - (theta0 +  w0 * _dt);
-                fg[2 + _v_start + i] = v1 - (v0 + a0 * _dt);
+                fg[2 + _x_start + i]        = x1 - (x0 + v0 * CppAD::cos(theta0) * _dt);
+                fg[2 + _y_start + i]        = y1 - (y0 + v0 * CppAD::sin(theta0) * _dt);
+                fg[2 + _theta_start + i]    = theta1 - (theta0 +  w0 * _dt);
+                fg[2 + _v_start + i]        = v1 - (v0 + a0 * _dt);
                 
-                fg[2 + _cte_start + i] = cte1 - ((f0 - y0) + (v0 * CppAD::sin(etheta0) * _dt));
-                fg[2 + _etheta_start + i] = etheta1 - ((theta0 - trj_grad0) + w0 * _dt);//theta0-trj_grad0)->etheta : it can have more curvature prediction, but its gradient can be only adjust positive plan.   
+                fg[2 + _cte_start + i]      = cte1 - ((f0 - y0) + (v0 * CppAD::sin(etheta0) * _dt));
+                fg[2 + _etheta_start + i]   = etheta1 - ((theta0 - trj_grad0) + w0 * _dt);//theta0-trj_grad0)->etheta : it can have more curvature prediction, but its gradient can be only adjust positive plan.   
                 //fg[2 + _etheta_start + i] = etheta1 - (etheta0 + w0 * _dt);
+
+                fg[2 + _angvel_start + i]   = angvel1 - (angvel0 + angacel0 * _dt  );
+                fg[2 + _a_start + i]        = a1 - (a0 + (fx1_0 + fx2_0)/massa  );
+                fg[2 + _angacel_start + i]  = angacel1 - (angacel0 + (fx1_0 - fx2_0)*0.265/I_chassi_z )
+                
+
+
+             
             }
         }
 };
@@ -236,7 +280,10 @@ MPC::MPC()
     _cte_start   = _v_start + _mpc_steps;
     _etheta_start  = _cte_start + _mpc_steps;
     _angvel_start = _etheta_start + _mpc_steps;
-    _a_start     = _angvel_start + _mpc_steps - 1;
+    _a_start     = _angvel_start + _mpc_steps;
+    _angacel_start  = _a_start + _mpc_steps;
+    _fx_1_start     = _angacel_start + _mpc_steps;
+    _fx_2_start     = _fx_1_start + _mpc_steps - 1;
 
 }
 
@@ -244,10 +291,12 @@ void MPC::LoadParams(const std::map<string, double> &params)
 {
     _params = params;
     //Init parameters for MPC object
+    // variable = (condition) ? expressionTrue : expressionFalse;
     _mpc_steps = _params.find("STEPS") != _params.end() ? _params.at("STEPS") : _mpc_steps;
     _max_angvel = _params.find("ANGVEL") != _params.end() ? _params.at("ANGVEL") : _max_angvel;
     _max_throttle = _params.find("MAXTHR") != _params.end() ? _params.at("MAXTHR") : _max_throttle;
     _bound_value  = _params.find("BOUND") != _params.end()  ? _params.at("BOUND") : _bound_value;
+    _fmax = _params.find("FMAX") != _params.end()  ? _params.at("FMAX") : _fmax;
     
     _x_start     = 0;
     _y_start     = _x_start + _mpc_steps;
@@ -256,7 +305,10 @@ void MPC::LoadParams(const std::map<string, double> &params)
     _cte_start   = _v_start + _mpc_steps;
     _etheta_start  = _cte_start + _mpc_steps;
     _angvel_start = _etheta_start + _mpc_steps;
-    _a_start     = _angvel_start + _mpc_steps - 1;
+    _a_start     = _angvel_start + _mpc_steps;
+    _angacel_start  = _a_start + _mpc_steps;
+    _fx_1_start     = _angacel_start + _mpc_steps;
+    _fx_2_start     = _fx_1_start + _mpc_steps - 1;
 
     cout << "\n!! MPC Obj parameters updated !! " << endl; 
 }
@@ -273,15 +325,19 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
     const double v = state[3];
     const double cte = state[4];
     const double etheta = state[5];
+    const double angvel = state[6];
+    const double lin_acel = state[7];
+    const double angacel = state[8];
+
 
     // Set the number of model variables (includes both states and inputs).
     // For example: If the state is a 4 element vector, the actuators is a 2
     // element vector and there are 10 timesteps. The number of variables is:
     // 4 * 10 + 2 * 9
-    size_t n_vars = _mpc_steps * 6 + (_mpc_steps - 1) * 2;
+    size_t n_vars = _mpc_steps * 9 + (_mpc_steps - 1) * 2;
     
     // Set the number of constraints
-    size_t n_constraints = _mpc_steps * 6;
+    size_t n_constraints = _mpc_steps * 9;
 
     // Initial value of the independent variables.
     // SHOULD BE 0 besides initial state.
@@ -298,6 +354,9 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
     vars[_v_start] = v;
     vars[_cte_start] = cte;
     vars[_etheta_start] = etheta;
+    vars[_angvel_start] = angvel;
+    vars[_a_start] = lin_acel;
+    vars[_angacel_start] = angacel;
 
     // Set lower and upper limits for variables.
     Dvector vars_lowerbound(n_vars);
@@ -305,24 +364,24 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
     
     // Set all non-actuators upper and lowerlimits
     // to the max negative and positive values.
-    for (int i = 0; i < _angvel_start; i++) 
+    for (int i = 0; i < _fx_1_start; i++) 
     {
         vars_lowerbound[i] = -_bound_value;
         vars_upperbound[i] = _bound_value;
     }
     // The upper and lower limits of angvel are set to -25 and 25
     // degrees (values in radians).
-    for (int i = _angvel_start; i < _a_start; i++) 
+    for (int i = _fx_1_start; i < n_vars; i++) 
     {
-        vars_lowerbound[i] = -_max_angvel;
-        vars_upperbound[i] = _max_angvel;
+        vars_lowerbound[i] = -_fmax;
+        vars_upperbound[i] = _fmax;
     }
-    // Acceleration/decceleration upper and lower limits
-    for (int i = _a_start; i < n_vars; i++)  
-    {
-        vars_lowerbound[i] = -_max_throttle;
-        vars_upperbound[i] = _max_throttle;
-    }
+    // // Acceleration/decceleration upper and lower limits
+    // for (int i = _a_start; i < n_vars; i++)  
+    // {
+    //     vars_lowerbound[i] = -_max_throttle;
+    //     vars_upperbound[i] = _max_throttle;
+    // }
 
 
     // Lower and upper limits for the constraints
@@ -340,18 +399,25 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
     constraints_lowerbound[_v_start] = v;
     constraints_lowerbound[_cte_start] = cte;
     constraints_lowerbound[_etheta_start] = etheta;
+    constraints_lowerbound[_angvel_start] = angvel;
+    constraints_lowerbound[_a_start] = lin_acel;
+    constraints_lowerbound[_angacel_start] = angacel;
+
     constraints_upperbound[_x_start] = x;
     constraints_upperbound[_y_start] = y;
     constraints_upperbound[_theta_start] = theta;
     constraints_upperbound[_v_start] = v;
     constraints_upperbound[_cte_start] = cte;
     constraints_upperbound[_etheta_start] = etheta;
+    constraints_upperbound[_angvel_start] = angvel;
+    constraints_upperbound[_a_start] = lin_acel;
+    constraints_upperbound[_angacel_start] = angacel;
 
     // object that computes objective and constraints
     FG_eval fg_eval(coeffs);
     fg_eval.LoadParams(_params);
 
-    fg_eval.cost_cte;
+    // fg_eval.cost_cte;
 
     // options for IPOPT solver
     std::string options;
@@ -399,7 +465,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs)
     }
     
     vector<double> result;
-    result.push_back(solution.x[_angvel_start]);
-    result.push_back(solution.x[_a_start]);
+    result.push_back(solution.x[_fx_1_start]);
+    result.push_back(solution.x[_fx_2_start]);
     return result;
 }

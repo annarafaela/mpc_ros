@@ -29,7 +29,7 @@
     <arg name="yaw" default="1.57075"  if="$(eval trajectory_type == 'infinite')"/>
 
     <!--  ************** Robot model ***************  -->
-    <param name="robot_description" command="$(find xacro)/xacro.py $(find servingbot_description)/urdf/servingbot.urdf.xacro" if="$(eval model == 'serving_bot')"/>
+    <param name="robot_description" command="$(find xacro)/xacro $(find servingbot_description)/urdf/servingbot.urdf.xacro" if="$(eval model == 'serving_bot')"/>
 
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="world_name" value="$(find gazebo_ros)/launch/empty_world.launch"/>

@@ -63,7 +63,7 @@ class MPCNode
         ros::NodeHandle _nh;
         ros::Subscriber _sub_odom, _sub_gen_path, _sub_path, _sub_goal, _sub_amcl;
         ros::Publisher _pub_totalcost, _pub_ctecost, _pub_ethetacost,_pub_odompath, _pub_twist, _pub_ackermann, _pub_mpctraj;
-        ros::Timer _timer1;
+        ros::Timer _timer1; //http://wiki.ros.org/roscpp_tutorials/Tutorials/Timers
         tf::TransformListener _tf_listener;
 
         geometry_msgs::Point _goal_pos;
@@ -79,6 +79,11 @@ class MPCNode
         map<string, double> _mpc_params;
         double _mpc_steps, _ref_cte, _ref_etheta, _ref_vel, _w_cte, _w_etheta, _w_vel, 
                _w_angvel, _w_accel, _w_angvel_d, _w_accel_d, _max_angvel, _max_throttle, _bound_value;
+
+        // forças atuantes
+        double _fx_1;
+        double _fx_2;
+        double _f_max;
 
         //double _Lf; 
         double _dt, _w, _throttle, _speed, _max_speed;
@@ -111,7 +116,8 @@ MPCNode::MPCNode()
 {
     //Private parameters handler
     ros::NodeHandle pn("~");
-
+    
+    // http://wiki.ros.org/roscpp_tutorials/Tutorials/Parameters
     //Parameters for control loop
     pn.param("thread_numbers", _thread_numbers, 2); // number of threads for this ROS node
     pn.param("pub_twist_cmd", _pub_twist_flag, true);
@@ -162,6 +168,7 @@ MPCNode::MPCNode()
     cout << "mpc_max_angvel: "  << _max_angvel << endl;
 
     //Publishers and Subscribers
+    // A palavra-chave "this" é necessária para se referir à instância atual de MPCNode
     _sub_odom   = _nh.subscribe("/odom", 1, &MPCNode::odomCB, this);
     _sub_path   = _nh.subscribe( _globalPath_topic, 1, &MPCNode::pathCB, this);
     _sub_gen_path   = _nh.subscribe( "desired_path", 1, &MPCNode::desiredPathCB, this);
@@ -212,6 +219,8 @@ MPCNode::MPCNode()
     _mpc_params["BOUND"]    = _bound_value;
     _mpc.LoadParams(_mpc_params);
 
+    _f_max = 0.4601128983093268;
+
     min_idx = 0;
     idx = 0;
     _mpc_etheta = 0;
@@ -232,7 +241,7 @@ int MPCNode::get_thread_numbers()
 }
 
 
-// Evaluate a polynomial.
+// Evaluate a polynomial. 
 double MPCNode::polyeval(Eigen::VectorXd coeffs, double x) 
 {
     double result = 0.0;
@@ -403,6 +412,7 @@ void MPCNode::amclCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& a
 {
     if(_goal_received)
     {
+        
         double car2goal_x = _goal_pos.x - amclMsg->pose.pose.position.x;
         double car2goal_y = _goal_pos.y - amclMsg->pose.pose.position.y;
         double dist2goal = sqrt(car2goal_x*car2goal_x + car2goal_y*car2goal_y);
@@ -419,7 +429,10 @@ void MPCNode::amclCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& a
 
 // Timer: Control Loop (closed loop nonlinear MPC)
 void MPCNode::controlLoopCB(const ros::TimerEvent&)
-{          
+{
+    // cout << "_goal_received"  << _goal_received <<endl;
+    // cout << "_goal_reached " << _goal_reached <<endl;
+    // cout << "_path_computed " << _path_computed <<endl;
     if(_goal_received && !_goal_reached && _path_computed ) //received goal & goal not reached    
     {    
         nav_msgs::Odometry odom = _odom; 
