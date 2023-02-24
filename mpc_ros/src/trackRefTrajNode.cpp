@@ -41,10 +41,11 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-
+#include <cstdlib>
 
 using namespace std;
 using namespace Eigen;
+
 
 
 
@@ -63,7 +64,7 @@ class MPCNode
         ros::NodeHandle _nh;
         ros::Subscriber _sub_odom, _sub_gen_path, _sub_path, _sub_goal, _sub_amcl;
         ros::Publisher _pub_totalcost, _pub_ctecost, _pub_ethetacost,_pub_odompath, _pub_twist, _pub_ackermann, _pub_mpctraj;
-        ros::Timer _timer1; //http://wiki.ros.org/roscpp_tutorials/Tutorials/Timers
+        ros::Timer _timer1;
         tf::TransformListener _tf_listener;
 
         geometry_msgs::Point _goal_pos;
@@ -79,17 +80,15 @@ class MPCNode
         map<string, double> _mpc_params;
         double _mpc_steps, _ref_cte, _ref_etheta, _ref_vel, _w_cte, _w_etheta, _w_vel, 
                _w_angvel, _w_accel, _w_angvel_d, _w_accel_d, _max_angvel, _max_throttle, _bound_value;
-
-        // forças atuantes
-        double _fx_1;
-        double _fx_2;
-        double _f_max;
+        double _w_fx1, _w_fx2, w_fx1_d, w_fx2_d;
 
         //double _Lf; 
         double _dt, _w, _throttle, _speed, _max_speed;
         double _pathLength, _goalRadius, _waypointsDist;
         int _controller_freq, _downSampling, _thread_numbers;
         bool _goal_received, _goal_reached, _path_computed, _pub_twist_flag, _debug_info, _delay_mode;
+
+        double _fx1, _fx2;
 
         double polyeval(Eigen::VectorXd coeffs, double x);
         Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order);
@@ -109,6 +108,10 @@ class MPCNode
         double _mpc_cte;
         fstream file;
         unsigned int idx;
+
+
+        double _FMAX, massa, I, b;
+
 }; // end of class
 
 
@@ -116,8 +119,7 @@ MPCNode::MPCNode()
 {
     //Private parameters handler
     ros::NodeHandle pn("~");
-    
-    // http://wiki.ros.org/roscpp_tutorials/Tutorials/Parameters
+
     //Parameters for control loop
     pn.param("thread_numbers", _thread_numbers, 2); // number of threads for this ROS node
     pn.param("pub_twist_cmd", _pub_twist_flag, true);
@@ -146,6 +148,7 @@ MPCNode::MPCNode()
     pn.param("mpc_max_angvel", _max_angvel, 3.0); // Maximal angvel radian (~30 deg)
     pn.param("mpc_max_throttle", _max_throttle, 1.0); // Maximal throttle accel
     pn.param("mpc_bound_value", _bound_value, 1.0e3); // Bound value for other variables
+    
 
     //Parameter for topics & Frame name
     pn.param<std::string>("global_path_topic", _globalPath_topic, "/move_base/TrajectoryPlannerROS/global_plan" );
@@ -168,7 +171,6 @@ MPCNode::MPCNode()
     cout << "mpc_max_angvel: "  << _max_angvel << endl;
 
     //Publishers and Subscribers
-    // A palavra-chave "this" é necessária para se referir à instância atual de MPCNode
     _sub_odom   = _nh.subscribe("/odom", 1, &MPCNode::odomCB, this);
     _sub_path   = _nh.subscribe( _globalPath_topic, 1, &MPCNode::pathCB, this);
     _sub_gen_path   = _nh.subscribe( "desired_path", 1, &MPCNode::desiredPathCB, this);
@@ -196,6 +198,9 @@ MPCNode::MPCNode()
     _w = 0.0;
     _speed = 0.0;
 
+    _fx1 = 0.0;
+    _fx2 = 0.0;
+
     //_ackermann_msg = ackermann_msgs::AckermannDriveStamped();
     _twist_msg = geometry_msgs::Twist();
     _mpc_traj = nav_msgs::Path();
@@ -219,18 +224,21 @@ MPCNode::MPCNode()
     _mpc_params["BOUND"]    = _bound_value;
     _mpc.LoadParams(_mpc_params);
 
-    _f_max = 0.4601128983093268;
-
     min_idx = 0;
     idx = 0;
     _mpc_etheta = 0;
     _mpc_cte = 0;
-    file.open("/home/geonhee/catkin_ws/src/mpc_ros/mpc.csv");
+    // file.open("/home/geonhee/catkin_ws/src/mpc_ros/mpc.csv");
+
+    _FMAX = 0.05;
+    massa = 0.082;
+    I = 1.4612727e-02;
+    b = 0.265/2;
 }
 
 MPCNode::~MPCNode()
 {
-    file.close();
+    // file.close();
     
 };
 
@@ -241,7 +249,7 @@ int MPCNode::get_thread_numbers()
 }
 
 
-// Evaluate a polynomial. 
+// Evaluate a polynomial.
 double MPCNode::polyeval(Eigen::VectorXd coeffs, double x) 
 {
     double result = 0.0;
@@ -412,7 +420,6 @@ void MPCNode::amclCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& a
 {
     if(_goal_received)
     {
-        
         double car2goal_x = _goal_pos.x - amclMsg->pose.pose.position.x;
         double car2goal_y = _goal_pos.y - amclMsg->pose.pose.position.y;
         double dist2goal = sqrt(car2goal_x*car2goal_x + car2goal_y*car2goal_y);
@@ -429,10 +436,7 @@ void MPCNode::amclCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& a
 
 // Timer: Control Loop (closed loop nonlinear MPC)
 void MPCNode::controlLoopCB(const ros::TimerEvent&)
-{
-    // cout << "_goal_received"  << _goal_received <<endl;
-    // cout << "_goal_reached " << _goal_reached <<endl;
-    // cout << "_path_computed " << _path_computed <<endl;
+{          
     if(_goal_received && !_goal_reached && _path_computed ) //received goal & goal not reached    
     {    
         nav_msgs::Odometry odom = _odom; 
@@ -451,6 +455,9 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         const double throttle = _throttle; // accel: >0; brake: <0
         const double dt = _dt;
         //const double Lf = _Lf;
+
+        const double fx1 = _fx1;
+        const double fx2 = _fx2;
 
         // Waypoints related parameters
         const int N = odom_path.poses.size(); // Number of waypoints
@@ -488,6 +495,8 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
             
             const double cte_act = cte + v * sin(etheta) * dt;
             const double etheta_act = etheta - theta_act;  
+            // const double acelLin_act = throttle + (fx1 + fx2)/massa;
+            // const double acelAng_act = (fx1 - fx2)*0.265/(2*I);
             
             state << px_act, py_act, theta_act, v_act, cte_act, etheta_act;
         }
@@ -500,15 +509,36 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         vector<double> mpc_results = _mpc.Solve(state, coeffs);
               
         // MPC result (all described in car frame), output = (acceleration, w)        
-        _w = mpc_results[0]; // radian/sec, angular velocity
-        _throttle = mpc_results[1]; // acceleration
-        _speed = v + _throttle*dt;  // speed
-        if (_speed >= _max_speed)
-            _speed = _max_speed;
-        if(_speed <= 0.0)
-            _speed = 0.0;
+        // _w = mpc_results[0]; // radian/sec, angular velocity
+        // _throttle = mpc_results[1]; // acceleration
+        // _speed = v + _throttle*dt;  // speed
+        // if (_speed >= _max_speed)
+        //     _speed = _max_speed;
+        // if(_speed <= 0.0)
+        //     _speed = 0.0;
+        _fx1 = mpc_results[0]; // right wheel longitudinal force 
+        _fx2 = mpc_results[1]; // left  wheel longitudinal force
+        
+        if (_fx1 >=_FMAX)
+            _fx1 = _FMAX;
+        if (_fx1 <=-_FMAX)
+            _fx1 = -_FMAX;
 
-        if(_debug_info)
+        if (_fx2 >=_FMAX)
+            _fx2 = _FMAX;
+        if (_fx2 <=-_FMAX)
+            _fx2 = -_FMAX;
+        
+         _throttle = (_fx1 + _fx2)/massa;
+
+        _speed = v + _throttle*dt;
+        _w = w + dt*(_fx1 - _fx2)*b/I;
+
+        
+
+
+        // if(_debug_info)
+        if(1)
         {
             cout << "\n\nDEBUG" << endl;
             cout << "theta: " << theta << endl;
@@ -516,10 +546,12 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
             //cout << "odom_path: \n" << odom_path << endl;
             //cout << "x_points: \n" << x_veh << endl;
             //cout << "y_points: \n" << y_veh << endl;
-            cout << "coeffs: \n" << coeffs << endl;
-            cout << "_w: \n" << _w << endl;
-            cout << "_throttle: \n" << _throttle << endl;
-            cout << "_speed: \n" << _speed << endl;
+            // cout << "coeffs: \n" << coeffs << endl;
+            // cout << "_w: \n" << _w << endl;
+            // cout << "_throttle: \n" << _throttle << endl;
+            // cout << "_speed: \n" << _speed << endl;
+            cout << "FX1 : \n" << _fx1 << endl;
+            cout << "FX2 : \n" << _fx2 << endl;
         }
 
         // Display the MPC predicted trajectory
@@ -575,7 +607,7 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         //writefile
         idx++;
         cout << "idx: "<< idx << endl;
-        file << idx<< "," << _mpc_cte<< "," <<  _mpc_etheta << "," << _twist_msg.linear.x<< "," << _twist_msg.angular.z  << ",";
+        // file << idx<< "," << _mpc_cte<< "," <<  _mpc_etheta << "," << _twist_msg.linear.x<< "," << _twist_msg.angular.z  << ",";
 
     }
     else
