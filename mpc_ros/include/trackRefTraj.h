@@ -52,7 +52,7 @@ class MPC
 
         unsigned int dis_cnt;
 
-        int _fx1_start, _fx2_start;
+        int _fx1_start, _fx2_start, _F_start;
         double _FMAX;
         double massa, I, b;
 };
