@@ -181,8 +181,7 @@ class FG_eval
             // }
             cout << "cost of gap: " << fg[0] << endl; 
 
-            cout << "N  STEPS : \n" << _mpc_steps << endl;
-            
+                        
 
             // fg[x] for constraints
             // Initial constraints

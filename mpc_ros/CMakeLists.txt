@@ -75,6 +75,14 @@ TARGET_LINK_LIBRARIES(global_planner_lib ipopt ${catkin_LIBRARIES} )
 add_library(mpc_ros src/mpc_plannner_ros.cpp src/mpc_plannner.cpp)
 TARGET_LINK_LIBRARIES(mpc_ros ipopt ${catkin_LIBRARIES} )
 
+add_executable(publish_robot_pose
+  src/publish_robot_pose.cpp
+)
+target_link_libraries(publish_robot_pose
+  ${catkin_LIBRARIES}
+)
+add_dependencies(publish_robot_pose ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 #############
 ## Example ##
 #############
