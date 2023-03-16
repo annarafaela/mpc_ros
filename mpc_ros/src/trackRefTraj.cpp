@@ -62,20 +62,20 @@ class FG_eval
             _w_angvel_d = 1000;
             _w_accel_d = 0;
 
-            _FMAX = 0.05;
+            _FMAX = 0.1;
             massa = 0.082;
             I = 1.4612727e-02;
             b = 0.265/2;
 
-            _w_fx1 = 1000.0;
-            _w_fx2 = 1000.0;
-            _w_fx1_d = 1000;
-            _w_fx2_d = 1000;
+            _w_fx1 = 10.0;
+            _w_fx2 = 10.0;
+            _w_fx1_d = 0;
+            _w_fx2_d = 0;
 
             _w_F = 10;
             _w_F_d = 0;
 
-            _mpc_steps   = 100;
+            _mpc_steps   = 40;
             _x_start     = 0;
             _y_start     = _x_start + _mpc_steps;
             _theta_start   = _y_start + _mpc_steps;
@@ -285,7 +285,7 @@ MPC::MPC()
     _fx1_start = _angvel_start + _mpc_steps;
     _fx2_start = _fx1_start + _mpc_steps -1;
 
-    _FMAX = 0.05;
+    _FMAX = 0.1;
     massa = 0.09;
     I = 1.4612727e-02;
     b = 0.265/2;
@@ -301,7 +301,7 @@ void MPC::LoadParams(const std::map<string, double> &params)
     _max_throttle = _params.find("MAXTHR") != _params.end() ? _params.at("MAXTHR") : _max_throttle;
     _bound_value  = _params.find("BOUND") != _params.end()  ? _params.at("BOUND") : _bound_value;
 
-    _FMAX = 0.05;
+    _FMAX = 0.1;
     
     _x_start     = 0;
     _y_start     = _x_start + _mpc_steps;

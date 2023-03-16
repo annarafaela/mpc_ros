@@ -3,7 +3,7 @@
     <param name="use_sim_time" value="true"/>
     <arg name="controller"  default="mpc" doc="opt: dwa, mpc, pure_pursuit"/> 
     <arg name="model"  default="serving_bot" doc="opt: serving_bot"/> 
-    <arg name="trajectory_type"  default="epitrochoid" doc="opt: circle, epitrochoid, square, infinite"/> 
+    <arg name="trajectory_type"  default="square" doc="opt: circle, epitrochoid, square, infinite"/> 
     <arg name="gui" default="false"/>
     
 
@@ -74,6 +74,7 @@
     </node>
 
     <!--  ************** Visualisation **************  -->
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rviz_navigation.rviz"/>
+    <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rviz_navigation.rviz"/> -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rviz_ref_traj.rviz"/>
 
 </launch>

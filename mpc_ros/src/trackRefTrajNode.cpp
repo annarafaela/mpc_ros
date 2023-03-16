@@ -25,6 +25,7 @@
 #include <geometry_msgs/Twist.h>
 #include <tf/transform_listener.h>
 #include <std_msgs/Float32.h>
+#include <std_msgs/Float64.h>
 
 // #include <tf/transform_datatypes.h>
 #include <nav_msgs/Path.h>
@@ -64,6 +65,7 @@ class MPCNode
         ros::NodeHandle _nh;
         ros::Subscriber _sub_odom, _sub_gen_path, _sub_path, _sub_goal, _sub_amcl;
         ros::Publisher _pub_totalcost, _pub_ctecost, _pub_ethetacost,_pub_odompath, _pub_twist, _pub_ackermann, _pub_mpctraj;
+        ros::Publisher _pub_RW, _pub_LW;
         ros::Timer _timer1;
         tf::TransformListener _tf_listener;
 
@@ -89,6 +91,8 @@ class MPCNode
         bool _goal_received, _goal_reached, _path_computed, _pub_twist_flag, _debug_info, _delay_mode;
 
         double _fx1, _fx2, _F;
+        double _tr, _tl;
+        std_msgs::Float64 _TR, _TL;
 
         double polyeval(Eigen::VectorXd coeffs, double x);
         Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order);
@@ -187,6 +191,9 @@ MPCNode::MPCNode()
     _pub_totalcost  = _nh.advertise<std_msgs::Float32>("/total_cost", 1); // Global path generated from another source
     _pub_ctecost  = _nh.advertise<std_msgs::Float32>("/cross_track_error", 1); // Global path generated from another source
     _pub_ethetacost  = _nh.advertise<std_msgs::Float32>("/theta_error", 1); // Global path generated from another source
+
+    _pub_RW = _nh.advertise<std_msgs::Float64>("/right_wheel_controller/command", 1); // torque on right wheel
+    _pub_LW = _nh.advertise<std_msgs::Float64>("/left_wheel_controller/command", 1); // torque on left wheel
     
     //Timer
     _timer1 = _nh.createTimer(ros::Duration((1.0)/_controller_freq), &MPCNode::controlLoopCB, this); // 10Hz //*****mpc
@@ -202,6 +209,11 @@ MPCNode::MPCNode()
     _fx1 = 0.0;
     _fx2 = 0.0;
     _F = 0.0;
+
+    _tr = 0.0;
+    _tl = 0.0;
+    // _TR.data = _tr;
+    // _TL.data = _tl;
 
     //_ackermann_msg = ackermann_msgs::AckermannDriveStamped();
     _twist_msg = geometry_msgs::Twist();
@@ -240,7 +252,7 @@ MPCNode::MPCNode()
     }
 
 
-    _FMAX = 0.05;
+    _FMAX = 0.1;
     massa = 0.082;
     I = 1.4612727e-02;
     b = 0.265/2;
@@ -528,38 +540,16 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         // Solve MPC Problem
         vector<double> mpc_results = _mpc.Solve(state, coeffs);
               
-        // MPC result (all described in car frame), output = (acceleration, w)        
-        // _w = mpc_results[0]; // radian/sec, angular velocity
-        // _throttle = mpc_results[1]; // acceleration
-        // _speed = v + _throttle*dt;  // speed
-        // if (_speed >= _max_speed)
-        //     _speed = _max_speed;
-        // if(_speed <= 0.0)
-        //     _speed = 0.0;
-        // _F = mpc_results[1]; // right wheel longitudinal force 
-        // _w = mpc_results[0]; // left  wheel longitudinal force
-        
-        // if (_fx1 >=_FMAX)
-        //     _fx1 = _FMAX;
-        // if (_fx1 <=-_FMAX)
-        //     _fx1 = -_FMAX;
-
-        // if (_fx2 >=_FMAX)
-        //     _fx2 = _FMAX;
-        // if (_fx2 <=-_FMAX)
-        //     _fx2 = -_FMAX;
-        
         _fx1 = mpc_results[0]; // right wheel longitudinal force 
         _fx2 = mpc_results[1];
 
         _throttle = (_fx1 + _fx2)/massa;
-        _speed = v + _throttle*dt;
 
-        _w = w + dt*(_fx1 - _fx2)*b/I;
-
+        _tr = _fx1*0.01;
+        _tl = _fx2*0.01;
         
-
-
+        
+        
         // if(_debug_info)
         if(1)
         {
@@ -575,6 +565,8 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
             // cout << "_speed: \n" << _speed << endl;
             cout << "FX1 : \n" << _fx1 << endl;
             cout << "FX2 : \n" << _fx2 << endl;
+            cout << "TR : \n" << _tr << endl;
+            cout << "TL : \n" << _tl << endl;
             // cout << "F : \n" << _F << endl;
             // cout << "N  STEPS : \n" << _mpc_steps << endl;
 
@@ -599,9 +591,11 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
     }
     else
     {
-        _throttle = 0.0;
-        _speed = 0.0;
-        _w = 0;
+        // _throttle = 0.0;
+        // _speed = 0.0;
+        // _w = 0;
+        _tr = 0.0;
+        _tl = 0.0;
         if(_goal_reached && _goal_received)
             cout << "Goal Reached: control loop !" << endl;
     }
@@ -610,9 +604,14 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
     // publish general cmd_vel 
     if(_pub_twist_flag)
     {
-        _twist_msg.linear.x  = _speed; 
-        _twist_msg.angular.z = _w;
-        _pub_twist.publish(_twist_msg);
+        // _twist_msg.linear.x  = _speed; 
+        // _twist_msg.angular.z = _w;
+        // _pub_twist.publish(_twist_msg);
+
+        _TR.data = _tr;
+        _TL.data = _tl;
+        _pub_RW.publish(_TR);
+        _pub_LW.publish(_TL);
 
         std_msgs::Float32 mpc_total_cost;
         mpc_total_cost.data = static_cast<float>(_mpc._mpc_totalcost);
@@ -640,9 +639,13 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
     }
     else
     {
-        _twist_msg.linear.x  = 0; 
-        _twist_msg.angular.z = 0;
-        _pub_twist.publish(_twist_msg);
+        // _twist_msg.linear.x  = 0; 
+        // _twist_msg.angular.z = 0;
+        // _pub_twist.publish(_twist_msg);
+        _TR.data = 0.0;
+        _TL.data = 0.0;
+        _pub_RW.publish(_TR);
+        _pub_LW.publish(_TL);
     }
     
   
