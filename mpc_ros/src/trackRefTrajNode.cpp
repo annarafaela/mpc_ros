@@ -134,12 +134,12 @@ MPCNode::MPCNode()
     pn.param("waypoints_dist", _waypointsDist, -1.0); // unit: m
     pn.param("path_length", _pathLength, 2.0); // unit: m
     pn.param("goal_radius", _goalRadius, 0.5); // unit: m
-    pn.param("controller_freq", _controller_freq, 10);
+    pn.param("controller_freq", _controller_freq, 100);
     //pn.param("vehicle_Lf", _Lf, 0.290); // distance between the front of the vehicle and its center of gravity
     _dt = double(1.0/_controller_freq); // time step duration dt in s 
 
     //Parameter for MPC solver
-    pn.param("mpc_steps", _mpc_steps, 100.0);
+    pn.param("mpc_steps", _mpc_steps, 40.0);
     pn.param("mpc_ref_cte", _ref_cte, 0.0);
     pn.param("mpc_ref_vel", _ref_vel, 0.5);
     pn.param("mpc_ref_etheta", _ref_etheta, 0.0);
@@ -252,7 +252,7 @@ MPCNode::MPCNode()
     }
 
 
-    _FMAX = 0.1;
+    _FMAX = 0.005;
     massa = 0.082;
     I = 1.4612727e-02;
     b = 0.265/2;
@@ -526,7 +526,7 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
             const double cte_act = cte + v * sin(etheta) * dt;
             const double etheta_act = etheta - theta_act;  
             
-            const double w_act = w +  dt*(fx1 - fx2)*b/I;
+            const double w_act = w +  dt*(fx1 - fx2)/I;
             // const double acelLin_act = throttle + (fx1 + fx2)/massa;
             // const double acelAng_act = (fx1 - fx2)*b/(I);
             
@@ -534,7 +534,7 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         }
         else
         {
-            state << 0, 0, 0, v, cte, etheta, 0;
+            state << 0, 0, 0, v, cte, etheta, w;
         }
         
         // Solve MPC Problem
@@ -543,10 +543,10 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         _fx1 = mpc_results[0]; // right wheel longitudinal force 
         _fx2 = mpc_results[1];
 
-        _throttle = (_fx1 + _fx2)/massa;
+        _throttle = (_fx1 + _fx2)/(massa*0.01);
 
-        _tr = _fx1*0.01;
-        _tl = _fx2*0.01;
+        _tr = _fx1;
+        _tl = _fx2;    
         
         
         
@@ -568,7 +568,7 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
             cout << "TR : \n" << _tr << endl;
             cout << "TL : \n" << _tl << endl;
             // cout << "F : \n" << _F << endl;
-            // cout << "N  STEPS : \n" << _mpc_steps << endl;
+            cout << "N  STEPS : \n" << _mpc_steps << endl;
 
         }
 

@@ -116,7 +116,7 @@ MPCNode::MPCNode()
     _dt = double(1.0/_controller_freq); // time step duration dt in s 
 
     //Parameter for MPC solver
-    pn.param("mpc_steps", _mpc_steps, 20.0);
+    pn.param("mpc_steps", _mpc_steps, 40.0);
     pn.param("mpc_ref_cte", _ref_cte, 0.0);
     pn.param("mpc_ref_vel", _ref_vel, 1.0);
     pn.param("mpc_ref_etheta", _ref_etheta, 0.0);

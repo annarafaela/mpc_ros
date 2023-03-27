@@ -10,7 +10,7 @@ controller_freq: 10
 meter_scoring: true
 
 # Parameter for MPC solver
-mpc_steps: 20.0
+mpc_steps: 40.0
 mpc_ref_cte: 0.0
 mpc_ref_vel: 1.0
 mpc_ref_etheta: 0.0

@@ -62,15 +62,15 @@ class FG_eval
             _w_angvel_d = 1000;
             _w_accel_d = 0;
 
-            _FMAX = 0.1;
+            _FMAX = 0.005;
             massa = 0.082;
             I = 1.4612727e-02;
             b = 0.265/2;
 
-            _w_fx1 = 10.0;
-            _w_fx2 = 10.0;
-            _w_fx1_d = 0;
-            _w_fx2_d = 0;
+            _w_fx1 = 1000.0;
+            _w_fx2 = 1000.0;
+            _w_fx1_d = 100;
+            _w_fx2_d = 100;
 
             _w_F = 10;
             _w_F_d = 0;
@@ -224,7 +224,7 @@ class FG_eval
 
                 AD<double> fx1_0 = vars[_fx1_start + i];
                 AD<double> fx2_0 = vars[_fx2_start + i];
-                AD<double> a0 = (fx1_0 + fx2_0)/massa; // ######
+                AD<double> a0 = (fx1_0 + fx2_0)/(massa*0.01); // ######
 
 
                 //AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * CppAD::pow(x0, 2) + coeffs[3] * CppAD::pow(x0, 3);
@@ -257,7 +257,7 @@ class FG_eval
                 
                 fg[2 + _cte_start + i] = cte1 - ((f0 - y0) + (v0 * CppAD::sin(etheta0) * _dt));
                 fg[2 + _etheta_start + i] = etheta1 - ((theta0 - trj_grad0) + w0 * _dt);//theta0-trj_grad0)->etheta : it can have more curvature prediction, but its gradient can be only adjust positive plan.
-                fg[2 + _angvel_start + i] = w1 - ( w0 + (fx1_0 - fx2_0)*b/I);
+                fg[2 + _angvel_start + i] = w1 - ( w0 + (fx1_0 - fx2_0)*_dt/I);
                 //fg[2 + _etheta_start + i] = etheta1 - (etheta0 + w0 * _dt);
             }
         }
@@ -285,7 +285,7 @@ MPC::MPC()
     _fx1_start = _angvel_start + _mpc_steps;
     _fx2_start = _fx1_start + _mpc_steps -1;
 
-    _FMAX = 0.1;
+    _FMAX = 0.005;
     massa = 0.09;
     I = 1.4612727e-02;
     b = 0.265/2;
@@ -301,7 +301,7 @@ void MPC::LoadParams(const std::map<string, double> &params)
     _max_throttle = _params.find("MAXTHR") != _params.end() ? _params.at("MAXTHR") : _max_throttle;
     _bound_value  = _params.find("BOUND") != _params.end()  ? _params.at("BOUND") : _bound_value;
 
-    _FMAX = 0.1;
+    _FMAX = 0.005;
     
     _x_start     = 0;
     _y_start     = _x_start + _mpc_steps;

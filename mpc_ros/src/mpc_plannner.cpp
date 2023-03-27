@@ -223,7 +223,7 @@ class FG_eval
 MPC::MPC() 
 {
     // Set default value    
-    _mpc_steps = 20;
+    _mpc_steps = 40;
     _max_angvel = 3.0; // Maximal angvel radian (~30 deg)
     _max_throttle = 1.0; // Maximal throttle accel
     _bound_value  = 1.0e3; // Bound value for other variables
