@@ -32,6 +32,7 @@
 #include <nav_msgs/Odometry.h>
 //#include <ackermann_msgs/AckermannDriveStamped.h>
 #include <visualization_msgs/Marker.h>
+#include <sensor_msgs/JointState.h>
 
 #include "trackRefTraj.h"
 #include <Eigen/Core>
@@ -42,11 +43,10 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <cstdlib>
+
 
 using namespace std;
 using namespace Eigen;
-
 
 
 
@@ -65,7 +65,6 @@ class MPCNode
         ros::NodeHandle _nh;
         ros::Subscriber _sub_odom, _sub_gen_path, _sub_path, _sub_goal, _sub_amcl;
         ros::Publisher _pub_totalcost, _pub_ctecost, _pub_ethetacost,_pub_odompath, _pub_twist, _pub_ackermann, _pub_mpctraj;
-        ros::Publisher _pub_RW, _pub_LW;
         ros::Timer _timer1;
         tf::TransformListener _tf_listener;
 
@@ -82,17 +81,12 @@ class MPCNode
         map<string, double> _mpc_params;
         double _mpc_steps, _ref_cte, _ref_etheta, _ref_vel, _w_cte, _w_etheta, _w_vel, 
                _w_angvel, _w_accel, _w_angvel_d, _w_accel_d, _max_angvel, _max_throttle, _bound_value;
-        double _w_fx1, _w_fx2, w_fx1_d, w_fx2_d;
 
         //double _Lf; 
         double _dt, _w, _throttle, _speed, _max_speed;
         double _pathLength, _goalRadius, _waypointsDist;
         int _controller_freq, _downSampling, _thread_numbers;
         bool _goal_received, _goal_reached, _path_computed, _pub_twist_flag, _debug_info, _delay_mode;
-
-        double _fx1, _fx2, _F;
-        double _tr, _tl;
-        std_msgs::Float64 _TR, _TL;
 
         double polyeval(Eigen::VectorXd coeffs, double x);
         Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order);
@@ -110,12 +104,17 @@ class MPCNode
         
         double _mpc_etheta;
         double _mpc_cte;
-        // fstream file;
-        ofstream file ;
+        fstream file;
         unsigned int idx;
 
+        ros::Publisher _pub_RW, _pub_LW;
+        double _wr, _wl;
+        std_msgs::Float64 _wr_curr, _wl_curr;
+        double _torqueR, _torqueL;
+        std_msgs::Float64 _WR, _WL;
 
-        double _FMAX, massa, I, b;
+        ros::Subscriber _sub_vel_rodas;
+        void get_vel_rodas(const sensor_msgs::JointState& msg);
 
 }; // end of class
 
@@ -130,30 +129,29 @@ MPCNode::MPCNode()
     pn.param("pub_twist_cmd", _pub_twist_flag, true);
     pn.param("debug_info", _debug_info, true);
     pn.param("delay_mode", _delay_mode, true);
-    pn.param("max_speed", _max_speed, 0.50); // unit: m/s
+    pn.param("max_speed", _max_speed, 0.20); // unit: m/s
     pn.param("waypoints_dist", _waypointsDist, -1.0); // unit: m
     pn.param("path_length", _pathLength, 2.0); // unit: m
     pn.param("goal_radius", _goalRadius, 0.5); // unit: m
-    pn.param("controller_freq", _controller_freq, 100);
+    pn.param("controller_freq", _controller_freq, 10);
     //pn.param("vehicle_Lf", _Lf, 0.290); // distance between the front of the vehicle and its center of gravity
     _dt = double(1.0/_controller_freq); // time step duration dt in s 
 
     //Parameter for MPC solver
-    pn.param("mpc_steps", _mpc_steps, 40.0);
+    pn.param("mpc_steps", _mpc_steps, 20.0);
     pn.param("mpc_ref_cte", _ref_cte, 0.0);
-    pn.param("mpc_ref_vel", _ref_vel, 0.5);
+    pn.param("mpc_ref_vel", _ref_vel, 1.0);
     pn.param("mpc_ref_etheta", _ref_etheta, 0.0);
-    pn.param("mpc_w_cte", _w_cte, 100.0);
-    pn.param("mpc_w_etheta", _w_etheta, 1000.0);
+    pn.param("mpc_w_cte", _w_cte, 5000.0);
+    pn.param("mpc_w_etheta", _w_etheta, 5000.0);
     pn.param("mpc_w_vel", _w_vel, 1.0);
-    pn.param("mpc_w_angvel", _w_angvel, 1000.0);
-    pn.param("mpc_w_angvel_d", _w_angvel_d, 1000.0);
+    pn.param("mpc_w_angvel", _w_angvel, 100.0);
+    pn.param("mpc_w_angvel_d", _w_angvel_d, 10.0);
     pn.param("mpc_w_accel", _w_accel, 50.0);
     pn.param("mpc_w_accel_d", _w_accel_d, 10.0);
     pn.param("mpc_max_angvel", _max_angvel, 3.0); // Maximal angvel radian (~30 deg)
     pn.param("mpc_max_throttle", _max_throttle, 1.0); // Maximal throttle accel
     pn.param("mpc_bound_value", _bound_value, 1.0e3); // Bound value for other variables
-    
 
     //Parameter for topics & Frame name
     pn.param<std::string>("global_path_topic", _globalPath_topic, "/move_base/TrajectoryPlannerROS/global_plan" );
@@ -191,9 +189,6 @@ MPCNode::MPCNode()
     _pub_totalcost  = _nh.advertise<std_msgs::Float32>("/total_cost", 1); // Global path generated from another source
     _pub_ctecost  = _nh.advertise<std_msgs::Float32>("/cross_track_error", 1); // Global path generated from another source
     _pub_ethetacost  = _nh.advertise<std_msgs::Float32>("/theta_error", 1); // Global path generated from another source
-
-    _pub_RW = _nh.advertise<std_msgs::Float64>("/right_wheel_controller/command", 1); // torque on right wheel
-    _pub_LW = _nh.advertise<std_msgs::Float64>("/left_wheel_controller/command", 1); // torque on left wheel
     
     //Timer
     _timer1 = _nh.createTimer(ros::Duration((1.0)/_controller_freq), &MPCNode::controlLoopCB, this); // 10Hz //*****mpc
@@ -205,15 +200,6 @@ MPCNode::MPCNode()
     _throttle = 0.0; 
     _w = 0.0;
     _speed = 0.0;
-
-    _fx1 = 0.0;
-    _fx2 = 0.0;
-    _F = 0.0;
-
-    _tr = 0.0;
-    _tl = 0.0;
-    // _TR.data = _tr;
-    // _TL.data = _tl;
 
     //_ackermann_msg = ackermann_msgs::AckermannDriveStamped();
     _twist_msg = geometry_msgs::Twist();
@@ -242,33 +228,32 @@ MPCNode::MPCNode()
     idx = 0;
     _mpc_etheta = 0;
     _mpc_cte = 0;
-    // file.open("/home/annarafaela/Documents/Tutorial_ros/catkin_ws_mpc_ros/src/mpc_ros/mpc.csv");
-    file.open("/home/annarafaela/Documents/Tutorial_ros/catkin_ws_mpc_ros/src/mpc_ros/log.txt",std::ios:: app);
-    if(file.is_open()){
-            std::cout<<"FILE LOGGER STARTING ..."<<"\n";
-    }
-    else{
-        std::cout<<"LOGGER NOT STARTING ..."<< "\n";
-    }
+    file.open("/home/geonhee/catkin_ws/src/mpc_ros/mpc.csv");
 
+    _pub_RW = _nh.advertise<std_msgs::Float64>("/right_wheel_controller/command", 1); // torque on right wheel
+    _pub_LW = _nh.advertise<std_msgs::Float64>("/left_wheel_controller/command", 1); // torque on left wheel
 
-    _FMAX = 0.005;
-    massa = 0.082;
-    I = 1.4612727e-02;
-    b = 0.265/2;
+    _sub_vel_rodas = _nh.subscribe("/joint_states", 1, &MPCNode::get_vel_rodas, this);
+
+    _wl = 0.0;
+    _wr = 0.0;
+    _torqueR = 0.0;
+    _torqueL = 0.0;
+    // _wr_curr.data = 0.0;
+    // _wl_curr.data = 0.0;
 }
 
 MPCNode::~MPCNode()
 {
     file.close();
-    if(file.is_open()){
-            std::cout<<"FILE LOGGER STARTING ..."<<"\n";
-    }
-    else{
-        std::cout<<"LOGGER  CLOSING ..."<< "\n";
-    }
     
 };
+
+void MPCNode::get_vel_rodas(const sensor_msgs::JointState & msg){
+    _wl_curr.data = msg.velocity[0];
+    _wr_curr.data = msg.velocity[1];
+    
+}
 
 // Public: return _thread_numbers
 int MPCNode::get_thread_numbers()
@@ -315,7 +300,6 @@ Eigen::VectorXd MPCNode::polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, i
 // CallBack: Update odometry
 void MPCNode::odomCB(const nav_msgs::Odometry::ConstPtr& odomMsg)
 {
-    
     _odom = *odomMsg;
     
 }
@@ -452,6 +436,7 @@ void MPCNode::amclCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& a
         double car2goal_x = _goal_pos.x - amclMsg->pose.pose.position.x;
         double car2goal_y = _goal_pos.y - amclMsg->pose.pose.position.y;
         double dist2goal = sqrt(car2goal_x*car2goal_x + car2goal_y*car2goal_y);
+        cout << "dist2goal: " << dist2goal << endl;
         if(dist2goal < _goalRadius)
         {
             _goal_received = false;
@@ -485,10 +470,6 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         const double dt = _dt;
         //const double Lf = _Lf;
 
-        const double fx1 = _fx1;
-        const double fx2 = _fx2;
-        const double F = _F;
-
         // Waypoints related parameters
         const int N = odom_path.poses.size(); // Number of waypoints
         const double costheta = cos(theta);
@@ -514,7 +495,7 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         _mpc_cte = cte;
         _mpc_etheta = etheta;
 
-        VectorXd state(7);
+        VectorXd state(6);
         if(_delay_mode)
         {
             // Kinematic model is used to predict vehicle state at the actual moment of control (current time + delay dt)
@@ -526,50 +507,52 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
             const double cte_act = cte + v * sin(etheta) * dt;
             const double etheta_act = etheta - theta_act;  
             
-            const double w_act = w +  dt*(fx1 - fx2)/I;
-            // const double acelLin_act = throttle + (fx1 + fx2)/massa;
-            // const double acelAng_act = (fx1 - fx2)*b/(I);
-            
-            state << px_act, py_act, theta_act, v_act, cte_act, etheta_act, w_act;
+            state << px_act, py_act, theta_act, v_act, cte_act, etheta_act;
         }
         else
         {
-            state << 0, 0, 0, v, cte, etheta, w;
+            state << 0, 0, 0, v, cte, etheta;
         }
         
         // Solve MPC Problem
         vector<double> mpc_results = _mpc.Solve(state, coeffs);
               
-        _fx1 = mpc_results[0]; // right wheel longitudinal force 
-        _fx2 = mpc_results[1];
+        // MPC result (all described in car frame), output = (acceleration, w)        
+        _w = mpc_results[0]; // radian/sec, angular velocity
+        _throttle = mpc_results[1]; // acceleration
+        _speed = v + _throttle*dt;  // speed
+        if (_speed >= _max_speed)
+            _speed = _max_speed;
+        if(_speed <= 0.0)
+            _speed = 0.0;
 
-        _throttle = (_fx1 + _fx2)/(massa*0.01);
 
-        _tr = _fx1;
-        _tl = _fx2;    
-        
-        
-        
+        _wl = (_speed - _w*(0.265/2))/0.1;
+        _wr = (_speed + _w*(0.265/2))/0.1;
+
+        _torqueL = 0.005*(_wl - _wl_curr.data);
+        _torqueR = 0.005*(_wr - _wr_curr.data);
+
+
         // if(_debug_info)
         if(1)
         {
             cout << "\n\nDEBUG" << endl;
-            cout << "theta: " << theta << endl;
+            // cout << "theta: " << theta << endl;
             cout << "V: " << v << endl;
             //cout << "odom_path: \n" << odom_path << endl;
             //cout << "x_points: \n" << x_veh << endl;
             //cout << "y_points: \n" << y_veh << endl;
             // cout << "coeffs: \n" << coeffs << endl;
-            // cout << "_w: \n" << _w << endl;
-            // cout << "_throttle: \n" << _throttle << endl;
-            // cout << "_speed: \n" << _speed << endl;
-            cout << "FX1 : \n" << _fx1 << endl;
-            cout << "FX2 : \n" << _fx2 << endl;
-            cout << "TR : \n" << _tr << endl;
-            cout << "TL : \n" << _tl << endl;
-            // cout << "F : \n" << _F << endl;
-            cout << "N  STEPS : \n" << _mpc_steps << endl;
-
+            cout << "_w: " << _w << "rad/s \n" << endl;
+            cout << "_throttle: " << _throttle << " m/s² \n"  <<endl;
+            cout << "_speed: " << _speed << " m/s \n" << endl;
+            cout << "_wl: " << _wl << " rad/s \n" << endl;
+            cout << "_wr: " << _wr << " rad/s \n" << endl;
+            cout << "_wl_curr: " << _wl_curr.data << " rad/s \n" << endl;
+            cout << "_wr_curr: " << _wr_curr.data << " rad/s \n" << endl;
+            cout << "_torqueL: " << _torqueL << " Nm \n" << endl;
+            cout << "_torqueR: " << _torqueR << " Nm \n" << endl;
         }
 
         // Display the MPC predicted trajectory
@@ -591,11 +574,11 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
     }
     else
     {
-        // _throttle = 0.0;
-        // _speed = 0.0;
-        // _w = 0;
-        _tr = 0.0;
-        _tl = 0.0;
+        _throttle = 0.0;
+        _speed = 0.0;
+        _w = 0;
+        _torqueR = 0.0;
+        _torqueL = 0.0;
         if(_goal_reached && _goal_received)
             cout << "Goal Reached: control loop !" << endl;
     }
@@ -608,10 +591,10 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         // _twist_msg.angular.z = _w;
         // _pub_twist.publish(_twist_msg);
 
-        _TR.data = _tr;
-        _TL.data = _tl;
-        _pub_RW.publish(_TR);
-        _pub_LW.publish(_TL);
+        _WR.data = _torqueR;
+        _WL.data = _torqueL;
+        _pub_RW.publish(_WR);
+        _pub_LW.publish(_WL);
 
         std_msgs::Float32 mpc_total_cost;
         mpc_total_cost.data = static_cast<float>(_mpc._mpc_totalcost);
@@ -629,12 +612,10 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         //cout << "_mpc_ctecost: "<< _mpc._mpc_ctecost << endl;
         //cout << "_mpc_ethetacost: "<< _mpc._mpc_ethetacost << endl;
         //cout << "_mpc_velcost: "<< _mpc._mpc_velcost << endl;
-        // writefile
+        //writefile
         idx++;
         cout << "idx: "<< idx << endl;
-        file << idx<< "," << _mpc_cte<< "," <<  _mpc_etheta << "," << _twist_msg.linear.x<< "," << _twist_msg.angular.z  << "," << _fx1<< "," << _fx2 << "\n";
-        // file << _fx1<< "\t" << _fx2 << "\n";
-        
+        file << idx<< "," << _wr<< "," << _wl  <<   ",";
 
     }
     else
@@ -642,10 +623,10 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         // _twist_msg.linear.x  = 0; 
         // _twist_msg.angular.z = 0;
         // _pub_twist.publish(_twist_msg);
-        _TR.data = 0.0;
-        _TL.data = 0.0;
-        _pub_RW.publish(_TR);
-        _pub_LW.publish(_TL);
+        _WR.data = 0.0;
+        _WL.data = 0.0;
+        _pub_RW.publish(_WR);
+        _pub_LW.publish(_WL);
     }
     
   
