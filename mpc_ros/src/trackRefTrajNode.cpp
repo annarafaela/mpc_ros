@@ -530,8 +530,8 @@ void MPCNode::controlLoopCB(const ros::TimerEvent&)
         _wl = (_speed - _w*(0.265/2))/0.1;
         _wr = (_speed + _w*(0.265/2))/0.1;
 
-        _torqueL = 0.005*(_wl - _wl_curr.data);
-        _torqueR = 0.005*(_wr - _wr_curr.data);
+        _torqueL = 0.001*(_wl - _wl_curr.data);
+        _torqueR = 0.001*(_wr - _wr_curr.data);
 
 
         // if(_debug_info)

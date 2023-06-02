@@ -50,9 +50,9 @@ class FG_eval
             _ref_etheta  = 0;
             _ref_vel   = 0.5; // m/s
             _w_cte     = 100;
-            _w_etheta    = 100;
-            _w_vel     = 1;
-            _w_angvel   = 100;
+            _w_etheta    = 1;
+            _w_vel     = 1000000;
+            _w_angvel   = 1;
             _w_accel   = 50;
             _w_angvel_d = 0;
             _w_accel_d = 0;

@@ -25,14 +25,18 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tf
   visualization_msgs
+  gazebo_ros
 )
+
+find_package(gazebo REQUIRED)
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-include_directories( ${catkin_INCLUDE_DIRS} include )
+include_directories( ${catkin_INCLUDE_DIRS} ${GAZEBO_INCLUDE_DIRS} include )
 include_directories(/usr/include)
 link_directories(/usr/lib)
-
+link_directories(${GAZEBO_LIBRARY_DIRS})
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GAZEBO_CXX_FLAGS}")
 
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
@@ -82,6 +86,9 @@ target_link_libraries(publish_robot_pose
   ${catkin_LIBRARIES}
 )
 add_dependencies(publish_robot_pose ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+#add_library(mpcTyreFrictionPlugin SHARED plugin/TireFrictionPlugin.cc)
+#target_link_libraries(mpcTyreFrictionPlugin  ${catkin_LIBRARIES} ${GAZEBO_LIBRARIES})
 
 #############
 ## Example ##

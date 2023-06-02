@@ -57,5 +57,6 @@
   <export>
     <nav_core plugin="${prefix}/global_planner_plugin.xml" />
     <nav_core plugin="${prefix}/mpc_plugin.xml"/>
+    <gazebo_ros plugin_path="${prefix}/lib" gazebo_media_path="${prefix}"/>
   </export>
 </package>

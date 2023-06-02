@@ -75,6 +75,7 @@
 
     <!--  ************** Visualisation **************  -->
     <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rviz_navigation.rviz"/> -->
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rviz_ref_traj.rviz"/>
+    <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rv_square.rviz"/> -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find mpc_ros)/rviz/rv_circle.rviz"/>
 
 </launch>
